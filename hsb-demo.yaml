@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: hsb-demo
+  annotations:
+     description: "short description"
+     iconClass: "icon-redis"
+     tags: image
+objects:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    name: hsb-demo
+  spec:
+    containers:
+      image: quay.io/bennywilbanks/hsbdemo
+      name: hsbdemo
+      ports:
+      - containerPort: 443
+        protocol: TCP
+- apiVersion: v1
+  kind: Secret
+  metadata:
+    annotations:
+      template.openshift.io/expose-root_admin_password: '{.data[''root-admin-password'']}'
+    name: ${HSBDEMO_SERVICE_NAME}
+  stringData:
+    root-admin-password: ${HSB_ADMIN_PW}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      template.openshift.io/expose-uri: https://{.spec.clusterIP}:{.spec.ports[?(.name=="hsbdemo")].port}
+    name: ${HSBDEMO_SERVICE_NAME}
+  spec:
+    ports:
+    - name: hsbdemo
+      port: 443
+    selector:
+      name: ${HSBDEMO_SERVICE_NAME}
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: ${HSBDEMO_SERVICE_NAME}
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: ${VOLUME_CAPACITY}
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: ${HSBDEMO_SERVICE_NAME}
+  spec:
+    replicas: 1
+    selector:
+      name: ${HSBDEMO_SERVICE_NAME}
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          name: ${HSBDEMO_SERVICE_NAME}
+      spec:
+        containers:
+        - env:
+          - name: HSB_ADMIN_PW
+            valueFrom:
+              secretKeyRef:
+                key: root-admin-password
+                name: ${HSBDEMO_SERVICE_NAME}
+          image: ' '
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              memory: ${MEMORY_LIMIT}
+          volumeMounts:
+          - mountPath: /var/treefrog
+            name: ${HSBDEMO_SERVICE_NAME}-data
+        volumes:
+        - name: ${HSBDEMO_SERVICE_NAME}-data
+          persistentVolumeClaim:
+            claimName: ${HSBDEMO_SERVICE_NAME}
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - hsbdemo
+        from:
+          kind: ImageStreamTag
+          name: hsbdemo:1.2
+      type: ImageChange
+    - type: ConfigChange
+parameters:
+- description: Maximum amount of memory the container can use.
+  displayName: Memory Limit
+  name: MEMORY_LIMIT
+  required: true
+  value: 512Mi
+- description: The name of the OpenShift Service exposed for the HSB demo.
+  displayName: Database Service Name
+  name: HSBDEMO_SERVICE_NAME
+  required: true
+  value: hsbdemo
+- description: Password for the HSB root admin user.
+  displayName: HSB root admin user Password
+  from: '[a-zA-Z0-9]{16}'
+  generate: expression
+  name: HSB_ADMIN_PW
+  required: true
+- description: Volume space available for data, e.g. 512Mi, 2Gi.
+  displayName: Volume Capacity
+  name: VOLUME_CAPACITY
+  required: true
+  value: 1Gi
+labels:
+  app: ${HSBDEMO_SERVER_NAME} 
+
