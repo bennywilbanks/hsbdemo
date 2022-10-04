@@ -1,23 +1,12 @@
 apiVersion: v1
 kind: Template
 metadata:
-  name: hsb-demo
+  name: ${HSBDEMO_SERVICE_NAME}
   annotations:
      description: "short description"
      iconClass: "icon-redis"
      tags: image
 objects:
-- apiVersion: v1
-  kind: Pod
-  metadata:
-    name: hsb-demo
-  spec:
-    containers:
-      image: quay.io/bennywilbanks/hsbdemo
-      name: hsbdemo
-      ports:
-      - containerPort: 443
-        protocol: TCP
 - apiVersion: v1
   kind: Secret
   metadata:
@@ -26,6 +15,13 @@ objects:
     name: ${HSBDEMO_SERVICE_NAME}
   stringData:
     root-admin-password: ${HSB_ADMIN_PW}
+- apiVersion: v1
+  kind: Secret
+  metadata:
+    name: bennywilbanks-hsb-demo-pull-secret
+  data:
+    .dockerconfigjson: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+  type: kubernetes.io/dockerconfigjson
 - apiVersion: v1
   kind: Service
   metadata:
@@ -58,46 +54,43 @@ objects:
       name: ${HSBDEMO_SERVICE_NAME}
     strategy:
       type: Recreate
+      timeoutSeconds: 1200
     template:
       metadata:
         labels:
           name: ${HSBDEMO_SERVICE_NAME}
       spec:
         containers:
-        - env:
+        - name: ${HSBDEMO_SERVICE_NAME}
+          image: quay.io/bennywilbanks/hsbdemo:1.2
+          ports:
+          - containerPort: 443
+          securityContent:
+            privledged: true
+          env:
           - name: HSB_ADMIN_PW
             valueFrom:
               secretKeyRef:
                 key: root-admin-password
                 name: ${HSBDEMO_SERVICE_NAME}
-          image: ' '
-          imagePullPolicy: IfNotPresent
           resources:
             limits:
               memory: ${MEMORY_LIMIT}
           volumeMounts:
           - mountPath: /var/treefrog
             name: ${HSBDEMO_SERVICE_NAME}-data
+        imagePullSecrets:
+        - name: bennywilbanks-hsb-demo-pull-secret
         volumes:
         - name: ${HSBDEMO_SERVICE_NAME}-data
           persistentVolumeClaim:
             claimName: ${HSBDEMO_SERVICE_NAME}
-    triggers:
-    - imageChangeParams:
-        automatic: true
-        containerNames:
-        - hsbdemo
-        from:
-          kind: ImageStreamTag
-          name: hsbdemo:1.2
-      type: ImageChange
-    - type: ConfigChange
 parameters:
 - description: Maximum amount of memory the container can use.
   displayName: Memory Limit
   name: MEMORY_LIMIT
   required: true
-  value: 512Mi
+  value: 2Gi
 - description: The name of the OpenShift Service exposed for the HSB demo.
   displayName: Database Service Name
   name: HSBDEMO_SERVICE_NAME
@@ -113,7 +106,4 @@ parameters:
   displayName: Volume Capacity
   name: VOLUME_CAPACITY
   required: true
-  value: 1Gi
-labels:
-  app: ${HSBDEMO_SERVER_NAME} 
-
+  value: 4Gi
